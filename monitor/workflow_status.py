@@ -11,13 +11,12 @@ Features:
   - Queries `rocotostat -s` and `rocotostat -c` for both realtime & retrospective runs
   - Detects new DEAD jobs (MD5-deduplicated), workflow stalls, and hung jobs (log staleness)
   - Sends email alerts via `mail` only on state transitions
-  - Pushes combined status + 7-day rolling history to a single JSON file per experiment
-    on GitHub (`status/<cluster>/<exp>.json`) with automatic HTTP 409 retry
+  - Writes combined status + 7-day rolling history to `status/<cluster>/<exp>.json`
+    and syncs to GitHub via Git SSH (`git pull --rebase` + `git commit` + `git push`)
   - Pings healthchecks.io dead-man's-switch heartbeat
 """
 
 import argparse
-import base64
 import copy
 import datetime as dt
 import hashlib
@@ -33,15 +32,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import yaml
-
-try:
-    import requests
-except ImportError:
-    requests = None
-import urllib.error
 import urllib.request
 
-GITHUB_API = "https://api.github.com"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 CYCLE_RE = re.compile(r"^\d{12}$")
 
 
@@ -453,49 +446,18 @@ def check_hung_jobs(
     return hung_found
 
 
-def github_request(
-    method: str, url: str, token: str, payload: Optional[Dict[str, Any]] = None
-) -> Tuple[int, Optional[Dict[str, Any]]]:
-    headers = {
-        "Authorization": f"token {token}",
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "workflow_status",
-    }
-    if requests is not None:
-        resp = requests.request(method, url, headers=headers, json=payload, timeout=20)
+def write_status_with_history(status: Dict[str, Any], status_file: Path) -> None:
+    """
+    Read existing `status/<cluster>/<exp>.json` from disk (if present) to preserve
+    its rolling 7-day `history` array, append the new snapshot, and write to disk.
+    """
+    existing_history: List[Dict[str, Any]] = []
+    if status_file.is_file():
         try:
-            data = resp.json() if resp.text else None
+            old_doc = json.loads(status_file.read_text())
+            existing_history = old_doc.get("history", [])
         except Exception:
-            data = None
-        return resp.status_code, data
-
-    req_data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    if req_data is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            body = resp.read().decode("utf-8")
-            return resp.status, (json.loads(body) if body else None)
-    except urllib.error.HTTPError as exc:
-        return exc.code, None
-    except Exception:
-        return 0, None
-
-
-def push_combined_status_to_github(
-    status: Dict[str, Any],
-    repo: str,
-    file_path: str,
-    token: str,
-    branch: str = "main",
-) -> bool:
-    """
-    Fetch existing `status/<cluster>/<exp>.json` (if any) to get its SHA and rolling 7-day
-    `history` array, append the current snapshot to `status['history']`, and PUT the single
-    combined JSON file to GitHub with up to 3 retries on HTTP 409/5xx.
-    """
-    url = f"{GITHUB_API}/repos/{repo}/contents/{file_path}"
+            existing_history = []
 
     done_cycles = [
         c for c in status.get("cycles", [])
@@ -517,49 +479,117 @@ def push_combined_status_to_github(
     cutoff_dt = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
     cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    for attempt in range(1, 4):
-        code, get_data = github_request("GET", f"{url}?ref={branch}", token)
-        sha = None
-        existing_history: List[Dict[str, Any]] = []
+    trimmed = [
+        e for e in existing_history
+        if isinstance(e, dict) and e.get("timestamp", "") >= cutoff_iso
+    ]
+    trimmed.append(new_entry)
+    status["history"] = trimmed[-1008:]
 
-        if code == 200 and get_data:
-            sha = get_data.get("sha")
-            content_b64 = get_data.get("content", "")
-            if content_b64:
-                try:
-                    raw_json = base64.b64decode(content_b64).decode("utf-8")
-                    old_doc = json.loads(raw_json)
-                    existing_history = old_doc.get("history", [])
-                except Exception:
-                    existing_history = []
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = status_file.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(status, indent=2) + "\n")
+    tmp.replace(status_file)
 
-        trimmed = [
-            e for e in existing_history
-            if isinstance(e, dict) and e.get("timestamp", "") >= cutoff_iso
-        ]
-        trimmed.append(new_entry)
-        status["history"] = trimmed[-1008:]
 
-        encoded = base64.b64encode((json.dumps(status, indent=2) + "\n").encode("utf-8")).decode("ascii")
-        put_payload: Dict[str, Any] = {
-            "message": f"status update {file_path} {status['updated_at']}",
-            "content": encoded,
-            "branch": branch,
-        }
-        if sha:
-            put_payload["sha"] = sha
+def get_status_branch(cluster: Optional[str] = None) -> str:
+    machine = cluster or os.environ.get("MACHINE") or socket.gethostname()
+    return f"status-{machine}"
 
-        put_code, _ = github_request("PUT", url, token, put_payload)
-        if put_code in (200, 201):
-            return True
-        if put_code in (409, 500, 502, 503, 504) and attempt < 3:
-            logging.warning("GitHub PUT %s returned %d (attempt %d/3), retrying...", file_path, put_code, attempt)
-            time.sleep(1.5 * attempt)
-            continue
 
-        logging.error("Failed to push %s to GitHub (HTTP %d)", file_path, put_code)
+def git_push_status_branch(repo_root: Path, updated_files: List[Path], branch: str, dry_run: bool) -> bool:
+    """
+    Build a standalone commit containing <exp>.json at the root of `branch`
+    using git plumbing (hash-object -> mktree -> commit-tree) and push it to
+    `origin <commit_sha>:refs/heads/<branch>`.
+    Never modifies the working tree, index, or current branch (`main`).
+    """
+    if not updated_files:
+        return True
+
+    names = [f.name for f in updated_files]
+    if dry_run:
+        logging.info("[DRY-RUN] Would push to branch '%s': %s", branch, ", ".join(names))
+        return True
+
+    # Also preserve any other <exp>.json files already on origin/<branch> (if monitored by a separate command)
+    existing_blobs: Dict[str, str] = {}
+    fetch_proc = subprocess.run(
+        ["git", "fetch", "origin", f"refs/heads/{branch}:refs/remotes/origin/{branch}"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if fetch_proc.returncode == 0:
+        ls_proc = subprocess.run(
+            ["git", "ls-tree", f"refs/remotes/origin/{branch}"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if ls_proc.returncode == 0:
+            for line in ls_proc.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and parts[3].endswith(".json"):
+                    existing_blobs[parts[3]] = parts[2]
+
+    for f in updated_files:
+        ho = subprocess.run(
+            ["git", "hash-object", "-w", str(f)],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if ho.returncode != 0:
+            logging.error("git hash-object failed for %s: %s", f.name, ho.stderr.strip())
+            return False
+        existing_blobs[f.name] = ho.stdout.strip()
+
+    tree_lines = [
+        f"100644 blob {sha}\t{fname}"
+        for fname, sha in sorted(existing_blobs.items())
+    ]
+    mktree = subprocess.run(
+        ["git", "mktree"],
+        cwd=str(repo_root),
+        input="\n".join(tree_lines) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if mktree.returncode != 0:
+        logging.error("git mktree failed: %s", mktree.stderr.strip())
         return False
+    tree_sha = mktree.stdout.strip()
 
+    msg = f"status update ({branch}) {utc_now_iso()}"
+    ct = subprocess.run(
+        ["git", "commit-tree", tree_sha, "-m", msg],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if ct.returncode != 0:
+        logging.error("git commit-tree failed: %s", ct.stderr.strip())
+        return False
+    commit_sha = ct.stdout.strip()
+
+    push_proc = subprocess.run(
+        ["git", "push", "--force", "origin", f"{commit_sha}:refs/heads/{branch}"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if push_proc.returncode == 0:
+        logging.info("Pushed %s to origin/%s", ", ".join(names), branch)
+        return True
+
+    logging.error("Failed to push to origin/%s: %s", branch, push_proc.stderr.strip())
     return False
 
 
@@ -568,35 +598,17 @@ def ping_heartbeat(uuid_str: str, dry_run: bool) -> None:
         return
     url = f"https://hc-ping.com/{uuid_str.strip()}"
     try:
-        if requests is not None:
-            requests.get(url, timeout=10)
-        else:
-            urllib.request.urlopen(url, timeout=10).read()
+        urllib.request.urlopen(url, timeout=10).read()
         logging.info("Sent heartbeat ping to healthchecks.io")
     except Exception as exc:
         logging.warning("Heartbeat ping failed: %s", exc)
-
-
-def resolve_token(dash_cfg: Dict[str, Any], config_dir: Path) -> Optional[str]:
-    token_file_str = dash_cfg.get("token_file")
-    candidates: List[Path] = []
-    if token_file_str:
-        p = Path(os.path.expanduser(token_file_str))
-        candidates.append(p if p.is_absolute() else (config_dir / p))
-    candidates.append(config_dir / "github_token")
-
-    for cand in candidates:
-        if cand.is_file():
-            tok = cand.read_text().strip()
-            if tok:
-                return tok
-    return None
 
 
 def process_experiment(
     config_file: Path,
     explicit_common: Optional[Path],
     dry_run: bool,
+    updated_files: List[Path],
     heartbeats_to_ping: Set[str],
 ) -> bool:
     cfg = load_merged_config(config_file, explicit_common)
@@ -634,21 +646,15 @@ def process_experiment(
     stall_cfg = checks_cfg.get("stall", {})
     hung_cfg = checks_cfg.get("hung_jobs", {})
 
-    dash_cfg = cfg.get("dashboard", {})
-    github_repo = dash_cfg.get("github_repo", "guoqing-noaa/workflow_status")
-    github_branch = dash_cfg.get("github_branch", "main")
-    status_path = dash_cfg.get("status_path") or f"status/{cluster}/{exp_name}.json"
-    github_token = resolve_token(dash_cfg, config_dir)
+    # Store <exp>.json inside git-ignored configs/.state/ so working tree on `main` stays 100% clean
+    status_file = state_dir / f"{exp_name}.json"
 
     hb_cfg = cfg.get("heartbeat", {})
     hc_uuid = (hb_cfg.get("healthchecks_uuid") or "").strip()
-    if not hc_uuid and (config_dir / "heartbeat_uuid").is_file():
-        hc_uuid = (config_dir / "heartbeat_uuid").read_text().strip()
     if hc_uuid:
         heartbeats_to_ping.add(hc_uuid)
 
-    state_file = state_dir / f"{exp_name}_{cluster}.json"
-    local_status_file = state_dir / f"{exp_name}_{cluster}_status.json"
+    state_file = state_dir / f"{exp_name}_{cluster}_state.json"
     state = load_state(state_file)
 
     # 1. Parse rocotostat
@@ -712,37 +718,14 @@ def process_experiment(
                 lines.append("No automatic action taken. Please investigate.")
             send_email(f"{subject_prefix}: hung job(s)", "\n".join(lines), recipients, dry_run)
 
-    # 5. Save state
+    # 5. Save deduplication state
     state["last_check"] = status["updated_at"]
     save_state(state_file, state)
 
-    # 6. Push combined status + history JSON to GitHub
-    if github_token and not dry_run:
-        logging.info("Pushing status + history to GitHub: %s", status_path)
-        push_combined_status_to_github(status, github_repo, status_path, github_token, github_branch)
-    else:
-        if not github_token:
-            logging.warning("No GitHub token configured — skipping GitHub push for %s", exp_name)
-        done_cycles = [
-            c for c in status.get("cycles", [])
-            if c.get("cycle_state") == "Done" and c.get("wall_time_min") is not None
-        ]
-        status["history"] = [
-            {
-                "timestamp": status["updated_at"],
-                "cycle": status["cycles"][-1]["cdate"] if status.get("cycles") else "unknown",
-                "tasks_total": status["summary"]["total_tasks"],
-                "succeeded": status["summary"]["succeeded"],
-                "running": status["summary"]["running"],
-                "dead": status["summary"]["dead"],
-                "cycle_wall_time_min": done_cycles[-1]["wall_time_min"] if done_cycles else None,
-            }
-        ]
-        if dry_run:
-            logging.info("[DRY-RUN] Would push status + history to GitHub: %s", status_path)
-
-    local_status_file.write_text(json.dumps(status, indent=2) + "\n")
-    logging.info("Saved local status JSON: %s", local_status_file)
+    # 6. Update configs/.state/<exp>.json with rolling 7-day history
+    write_status_with_history(status, status_file)
+    updated_files.append(status_file)
+    logging.info("Saved status JSON: %s", status_file)
 
     s = status["summary"]
     logging.info(
@@ -776,7 +759,7 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Run checks locally without sending emails or pushing to GitHub",
+        help="Run checks and update local status JSON files without sending emails or pushing to GitHub",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
@@ -808,23 +791,27 @@ def main() -> int:
     )
     logging.Formatter.converter = time.gmtime
 
+    status_branch = get_status_branch()
     logging.info(
-        "=== Monitor run started (MACHINE=%s, dry_run=%s) ===",
+        "=== Monitor run started (MACHINE=%s, branch=%s, dry_run=%s) ===",
         os.environ.get("MACHINE", "unset"),
+        status_branch,
         args.dry_run,
     )
 
     ok_count = 0
+    updated_files: List[Path] = []
     heartbeats_to_ping: Set[str] = set()
 
     for cf in config_files:
         try:
-            if process_experiment(cf, explicit_common, args.dry_run, heartbeats_to_ping):
+            if process_experiment(cf, explicit_common, args.dry_run, updated_files, heartbeats_to_ping):
                 ok_count += 1
         except Exception as exc:
             logging.exception("Error processing %s: %s", cf.name, exc)
 
     if ok_count > 0:
+        git_push_status_branch(REPO_ROOT, updated_files, status_branch, args.dry_run)
         for uuid_str in sorted(heartbeats_to_ping):
             ping_heartbeat(uuid_str, args.dry_run)
 

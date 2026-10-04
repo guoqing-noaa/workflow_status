@@ -29,8 +29,3 @@ checks:
 
 heartbeat:
   healthchecks_uuid: ""
-
-dashboard:
-  github_repo: guoqing-noaa/workflow_status
-  github_branch: main
-  token_file: github_token

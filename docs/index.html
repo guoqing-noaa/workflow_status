@@ -496,19 +496,38 @@
             const errorBanner = document.getElementById('error-banner');
             
             try {
-                // Discover all status/<cluster>/<exp>.json files via GitHub Tree API (no _meta.json needed)
-                const treeUrl = `https://api.github.com/repos/${REPO}/git/trees/${BRANCH}?recursive=1`;
-                const treeResp = await fetch(treeUrl, { cache: "no-store" });
-                if (!treeResp.ok) throw new Error(`GitHub Tree API failed: ${treeResp.status}`);
-                const treeData = await treeResp.json();
+                // 1. Discover all status-<machine> branches via GitHub Branches API
+                const branchesUrl = `https://api.github.com/repos/${REPO}/branches?per_page=100`;
+                const branchesResp = await fetch(branchesUrl, { cache: "no-store" });
+                if (!branchesResp.ok) throw new Error(`GitHub Branches API failed: ${branchesResp.status}`);
+                const branches = await branchesResp.json();
 
-                const statusPaths = (treeData.tree || [])
-                    .filter(item => item.type === 'blob' && /^status\/[^/]+\/[^/]+\.json$/.test(item.path) && !item.path.endsWith('_history.json'))
-                    .map(item => item.path)
+                const statusBranches = (branches || [])
+                    .map(b => b.name)
+                    .filter(name => name.startsWith('status-'))
                     .sort();
 
-                if (statusPaths.length === 0) {
-                    throw new Error('No status/<cluster>/<exp>.json files found in repository yet');
+                if (statusBranches.length === 0) {
+                    throw new Error('No status-<machine> branches found in repository yet');
+                }
+
+                // 2. Discover root <exp>.json files on each status-<machine> branch
+                const targets = [];
+                await Promise.all(statusBranches.map(async (branch) => {
+                    const cluster = branch.replace(/^status-/, '');
+                    const treeUrl = `https://api.github.com/repos/${REPO}/git/trees/${branch}`;
+                    const treeResp = await fetch(treeUrl, { cache: "no-store" });
+                    if (!treeResp.ok) return;
+                    const treeData = await treeResp.json();
+                    (treeData.tree || [])
+                        .filter(item => item.type === 'blob' && /^[^/]+\.json$/.test(item.path))
+                        .forEach(item => {
+                            targets.push({ branch, cluster, path: item.path, name: item.path.replace(/\.json$/, '') });
+                        });
+                }));
+
+                if (targets.length === 0) {
+                    throw new Error('No <exp>.json files found on status-<machine> branches yet');
                 }
 
                 isDemoMode = false;
@@ -517,14 +536,11 @@
                 const statusData = {};
                 const historyData = {};
 
-                // Fetch each experiment's single combined JSON file
-                await Promise.all(statusPaths.map(async (path) => {
-                    const parts = path.split('/');
-                    const cluster = parts[1];
-                    const name = parts[2].replace(/\.json$/, '');
-                    const key = `${cluster}:${name}`;
+                // 3. Fetch each https://raw.githubusercontent.com/<owner>/<repo>/status-<machine>/<exp>.json
+                await Promise.all(targets.map(async (t) => {
+                    const key = `${t.cluster}:${t.name}`;
                     try {
-                        const statusUrl = `${RAW_BASE_URL}/${path}?t=${Date.now()}`;
+                        const statusUrl = `https://raw.githubusercontent.com/${REPO}/${t.branch}/${t.path}?t=${Date.now()}`;
                         const statusResp = await fetch(statusUrl, { cache: "no-store" });
 
                         if (statusResp.ok) {
