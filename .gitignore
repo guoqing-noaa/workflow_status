@@ -1,5 +1,5 @@
 # State files and secrets (generated on HPC, not committed)
-configs/.state/
+.state/
 healthchecks_uuid.txt
 
 # Python

@@ -4,8 +4,8 @@
 # Resolves the machine's pyDAmonitor Python executable and Rocoto module,
 # then executes workflow_status.py without needing `conda activate`.
 #
-# Example usage:
-#   MACHINE=gaeac7 workflow_status.sh <exp1.yaml> [exp2.yaml ...] [--dry-run] [--verbose]
+# Usage:
+#   MACHINE=gaeac7 ./workflow_status.sh [config.yml] [--dry-run] [--verbose]
 
 set -o pipefail
 
@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "${MACHINE:-}" ]]; then
   echo "ERROR: MACHINE environment variable is required." >&2
-  echo "Usage: MACHINE=<gaeac6|gaeac7|hera|ursa|orion|hercules|derecho> $(basename "$0") <exp1.yaml> [exp2.yaml ...]" >&2
+  echo "Usage: MACHINE=<gaeac6|gaeac7|hera|ursa|orion|hercules|derecho> $(basename "$0") [config.yml] [--dry-run]" >&2
   exit 1
 fi
 export MACHINE

@@ -1,0 +1,36 @@
+# config.yml — Configuration for workflow_status
+# Shared defaults under `common:` apply to all experiments and can be overridden per experiment.
+
+common:
+  workflow_xml: rrfs.xml
+  workflow_db: rrfs.db
+  lookback_cycles: 4
+  recipients:
+    - Guoqing.Ge@noaa.gov
+  checks:
+    dead_jobs:
+      enabled: true
+    stall:
+      enabled: true
+      threshold_sec: 3600
+    hung_jobs:
+      enabled: false
+      action: alert
+      tasks:
+        - name: fcst
+          log_pattern: "{workdir}/fcst_{cyc}/log.atmosphere.0000.out"
+          max_idle_sec: 1200
+
+experiments:
+  - name: rrfsdet_rt
+    expdir: /scratch5/purged/gge/arps/PEAR/exp/rrfsdet
+    subject_prefix: rrfsv2x_rt
+
+  - name: rrfsdet_retro
+    expdir: /gpfs/f7/arfs-gsl/world-shared/gge/rrfs2/OPSROOT/conus12km/exp/rrfsdet
+    subject_prefix: retro_PEAR
+    checks:
+      stall:
+        threshold_sec: 10800
+      hung_jobs:
+        enabled: true

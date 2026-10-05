@@ -3,17 +3,18 @@
 workflow_status.py — Unified HPC Rocoto Workflow Monitor
 
 Usage:
-  MACHINE=gaeac7 workflow_status.sh exp1.yaml [exp2.yaml ...] [--dry-run] [--verbose]
+  MACHINE=gaeac7 ./workflow_status.sh [config.yml] [--dry-run] [--verbose]
 
 Features:
-  - Automatically loads `common.yaml` / `common.yml` from the config file's directory
-    and deep-merges each experiment YAML on top of it
+  - Reads `config.yml` (default: `<repo_root>/config.yml`) with a `common:` section
+    and an `experiments:` list, deep-merging each experiment's overrides on top of `common:`
   - Queries `rocotostat -s` and `rocotostat -c` for both realtime & retrospective runs
   - Detects new DEAD jobs (MD5-deduplicated), workflow stalls, and hung jobs (log staleness)
   - Sends email alerts via `mail` only on state transitions
-  - Writes combined status + 7-day rolling history to `status/<cluster>/<exp>.json`
-    and syncs to GitHub via Git SSH (`git pull --rebase` + `git commit` + `git push`)
-  - Pings healthchecks.io dead-man's-switch heartbeat
+  - Saves `<exp>.json` (with rolling 7-day `history`) in `.state/` and pushes directly
+    to branch `status-<MACHINE>` (`https://raw.githubusercontent.com/<owner>/<repo>/status-<machine>/<exp>.json`)
+    without modifying the working tree or `main` branch
+  - Pings healthchecks.io dead-man's-switch heartbeat if `healthchecks_uuid.txt` exists
 """
 
 import argparse
@@ -28,13 +29,13 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
-import urllib.request
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent
 CYCLE_RE = re.compile(r"^\d{12}$")
 
 
@@ -51,27 +52,6 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
         else:
             result[k] = copy.deepcopy(v)
     return result
-
-
-def load_merged_config(config_file: Path, explicit_common: Optional[Path] = None) -> Dict[str, Any]:
-    """Load common.yaml/common.yml (if present) and merge config_file on top."""
-    common_cfg: Dict[str, Any] = {}
-    candidates: List[Path] = []
-    if explicit_common:
-        candidates.append(explicit_common)
-    else:
-        candidates.extend([
-            config_file.parent / "common.yaml",
-            config_file.parent / "common.yml",
-        ])
-
-    for cand in candidates:
-        if cand.is_file() and cand.resolve() != config_file.resolve():
-            common_cfg = yaml.safe_load(cand.read_text()) or {}
-            break
-
-    exp_cfg = yaml.safe_load(config_file.read_text()) or {}
-    return deep_merge(common_cfg, exp_cfg)
 
 
 def parse_rocoto_time(ts_str: Optional[str]) -> Optional[dt.datetime]:
@@ -448,7 +428,7 @@ def check_hung_jobs(
 
 def write_status_with_history(status: Dict[str, Any], status_file: Path) -> None:
     """
-    Read existing `status/<cluster>/<exp>.json` from disk (if present) to preserve
+    Read existing `.state/<exp>.json` from disk (if present) to preserve
     its rolling 7-day `history` array, append the new snapshot, and write to disk.
     """
     existing_history: List[Dict[str, Any]] = []
@@ -512,7 +492,6 @@ def git_push_status_branch(repo_root: Path, updated_files: List[Path], branch: s
         logging.info("[DRY-RUN] Would push to branch '%s': %s", branch, ", ".join(names))
         return True
 
-    # Also preserve any other <exp>.json files already on origin/<branch> (if monitored by a separate command)
     existing_blobs: Dict[str, str] = {}
     fetch_proc = subprocess.run(
         ["git", "fetch", "origin", f"refs/heads/{branch}:refs/remotes/origin/{branch}"],
@@ -615,17 +594,11 @@ def ping_heartbeat(uuid_str: Optional[str], dry_run: bool) -> None:
 
 
 def process_experiment(
-    config_file: Path,
-    explicit_common: Optional[Path],
+    exp_cfg: Dict[str, Any],
+    state_dir: Path,
     dry_run: bool,
     updated_files: List[Path],
 ) -> bool:
-    cfg = load_merged_config(config_file, explicit_common)
-    config_dir = config_file.parent
-    state_dir = config_dir / ".state"
-    state_dir.mkdir(parents=True, exist_ok=True)
-
-    exp_cfg = cfg.get("experiment", {})
     exp_name = exp_cfg.get("name")
     cluster = exp_cfg.get("cluster") or os.environ.get("MACHINE") or "unknown"
     expdir_str = exp_cfg.get("expdir")
@@ -633,7 +606,7 @@ def process_experiment(
     db = exp_cfg.get("workflow_db", "rrfs.db")
 
     if not exp_name or not expdir_str:
-        logging.error("Missing required experiment fields (name, expdir) in %s", config_file.name)
+        logging.error("Missing required experiment fields (name, expdir): %s", exp_cfg)
         return False
 
     expdir = Path(expdir_str)
@@ -643,21 +616,16 @@ def process_experiment(
         logging.warning("Experiment directory not accessible on %s: %s — skipping", socket.gethostname(), expdir)
         return False
 
-    cycling_cfg = cfg.get("cycling", {})
-    lookback = int(cycling_cfg.get("lookback_cycles", 6))
+    lookback = int(exp_cfg.get("lookback_cycles", 4))
+    recipients = parse_recipients(exp_cfg.get("recipients", []))
+    subject_prefix = exp_cfg.get("subject_prefix", exp_name)
 
-    alerts_cfg = cfg.get("alerts", {})
-    recipients = parse_recipients(alerts_cfg.get("recipients", []))
-    subject_prefix = alerts_cfg.get("subject_prefix", exp_name)
-
-    checks_cfg = cfg.get("checks", {})
+    checks_cfg = exp_cfg.get("checks", {})
     dead_cfg = checks_cfg.get("dead_jobs", {})
     stall_cfg = checks_cfg.get("stall", {})
     hung_cfg = checks_cfg.get("hung_jobs", {})
 
-    # Store <exp>.json inside git-ignored configs/.state/ so working tree on `main` stays 100% clean
     status_file = state_dir / f"{exp_name}.json"
-
     state_file = state_dir / f"{exp_name}_{cluster}_state.json"
     state = load_state(state_file)
 
@@ -726,7 +694,7 @@ def process_experiment(
     state["last_check"] = status["updated_at"]
     save_state(state_file, state)
 
-    # 6. Update configs/.state/<exp>.json with rolling 7-day history
+    # 6. Update .state/<exp>.json with rolling 7-day history
     write_status_with_history(status, status_file)
     updated_files.append(status_file)
     logging.info("Saved status JSON: %s", status_file)
@@ -749,16 +717,13 @@ def process_experiment(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Unified HPC Rocoto Workflow Monitor (inherits shared settings from common.yaml)"
+        description="Unified HPC Rocoto Workflow Monitor"
     )
     parser.add_argument(
-        "configs",
-        nargs="+",
-        help="One or more experiment YAML config files (e.g., exp1.yaml exp2.yaml)",
-    )
-    parser.add_argument(
-        "--common",
-        help="Optional path to common.yaml (defaults to common.yaml/common.yml alongside each config file)",
+        "config",
+        nargs="?",
+        default=str(REPO_ROOT / "config.yml"),
+        help="Path to YAML config file (default: <repo_root>/config.yml)",
     )
     parser.add_argument(
         "--dry-run",
@@ -768,21 +733,16 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
-    config_files: List[Path] = []
-    for raw in args.configs:
-        p = Path(raw).resolve()
-        if not p.is_file():
-            print(f"ERROR: Config file not found: {raw}", file=sys.stderr)
-            return 1
-        config_files.append(p)
+    config_file = Path(args.config).resolve()
+    if not config_file.is_file():
+        print(f"ERROR: Config file not found: {config_file}", file=sys.stderr)
+        return 1
 
-    explicit_common = Path(args.common).resolve() if args.common else None
-
-    first_state_dir = config_files[0].parent / ".state"
-    first_state_dir.mkdir(parents=True, exist_ok=True)
-    log_file = first_state_dir / "monitor.log"
+    state_dir = REPO_ROOT / ".state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    log_file = state_dir / "monitor.log"
     if log_file.is_file() and log_file.stat().st_size > 1048576:
-        log_file.replace(first_state_dir / "monitor.log.prev")
+        log_file.replace(state_dir / "monitor.log.prev")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -803,21 +763,30 @@ def main() -> int:
         args.dry_run,
     )
 
+    raw_cfg = yaml.safe_load(config_file.read_text()) or {}
+    common_cfg = raw_cfg.get("common", {})
+    experiments = raw_cfg.get("experiments", [])
+
+    if not experiments:
+        logging.error("No experiments defined under 'experiments:' in %s", config_file)
+        return 1
+
     ok_count = 0
     updated_files: List[Path] = []
 
-    for cf in config_files:
+    for exp_item in experiments:
+        merged_exp = deep_merge(common_cfg, exp_item)
         try:
-            if process_experiment(cf, explicit_common, args.dry_run, updated_files):
+            if process_experiment(merged_exp, state_dir, args.dry_run, updated_files):
                 ok_count += 1
         except Exception as exc:
-            logging.exception("Error processing %s: %s", cf.name, exc)
+            logging.exception("Error processing %s: %s", exp_item.get("name", "unknown"), exc)
 
     if ok_count > 0:
         git_push_status_branch(REPO_ROOT, updated_files, status_branch, args.dry_run)
         ping_heartbeat(find_heartbeat_uuid(REPO_ROOT), args.dry_run)
 
-    logging.info("=== Monitor run completed (%d/%d experiments succeeded) ===", ok_count, len(config_files))
+    logging.info("=== Monitor run completed (%d/%d experiments succeeded) ===", ok_count, len(experiments))
     return 0 if ok_count > 0 else 1
 
 
