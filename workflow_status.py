@@ -636,6 +636,8 @@ def process_experiment(
     # 1. Parse rocotostat
     cycles = parse_rocotostat(expdir, xml, db, lookback)
     status = build_status_dict(exp_name, cluster, cycles)
+    if exp_cfg.get("default"):
+        status["default"] = True
 
     # 2. Dead job check
     if dead_cfg.get("enabled", True):
