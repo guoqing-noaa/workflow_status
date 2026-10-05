@@ -89,7 +89,7 @@
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-200 min-h-screen flex flex-col font-sans transition-colors duration-200">
 
     <!-- Floating Tooltip (never clipped by table/container bounds) -->
-    <div id="floating-tooltip" class="hidden fixed z-50 pointer-events-none bg-gray-900/95 dark:bg-gray-800/95 text-white border border-gray-700 dark:border-gray-600 rounded-lg shadow-xl p-3 text-xs backdrop-blur-sm max-w-2xl"></div>
+    <div id="floating-tooltip" class="hidden fixed z-50 pointer-events-none bg-gray-900/95 dark:bg-gray-800/95 text-white border border-gray-700 dark:border-gray-600 rounded-lg shadow-xl p-3 text-xs backdrop-blur-sm w-max max-w-[96vw]"></div>
 
     <!-- Header (Full Width) -->
     <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 w-full">
@@ -863,29 +863,29 @@
                         cellDiv.className = `px-1.5 h-6 min-w-[2.5rem] mx-auto rounded ${bgClass} ${pulseClass} text-white font-mono text-[11px] font-bold flex items-center justify-center cursor-help ring-1 ring-black/5 dark:ring-white/10 shadow-sm whitespace-nowrap`;
                         cellDiv.textContent = `${succ}/${total}`;
 
-                        // Build multi-column tooltip showing each individual task's status
-                        const gridColsClass = total > 16 ? 'grid-cols-3' : (total > 6 ? 'grid-cols-2' : 'grid-cols-1');
+                        // Build multi-column tooltip showing each individual task's full name & status without cropping
+                        const numCols = total > 16 ? 3 : (total > 6 ? 2 : 1);
                         const itemsHtml = tasksInCol.map(t => {
                             const st = (t.state || 'OTHER').toUpperCase();
                             const dotColor = STATE_DOT_COLORS[st] || STATE_DOT_COLORS['OTHER'];
                             const durStr = t.duration !== null && t.duration !== undefined ? `${t.duration}s` : '-';
                             return `
-                                <div class="flex items-center justify-between gap-2 bg-gray-800/80 dark:bg-gray-900/70 px-2 py-1 rounded border border-gray-700/60">
-                                    <div class="flex items-center gap-1.5 min-w-0">
+                                <div class="flex items-center justify-between gap-3 bg-gray-800/80 dark:bg-gray-900/70 px-2.5 py-1 rounded border border-gray-700/60 whitespace-nowrap">
+                                    <div class="flex items-center gap-1.5 whitespace-nowrap">
                                         <span class="w-2 h-2 rounded-full flex-shrink-0 ${dotColor}"></span>
-                                        <span class="font-mono text-[11px] truncate">${t.name}</span>
+                                        <span class="font-mono text-[11px] font-medium">${t.name}</span>
                                     </div>
-                                    <span class="font-mono text-[10px] opacity-80 whitespace-nowrap">${st} (${durStr})</span>
+                                    <span class="font-mono text-[10px] opacity-85 whitespace-nowrap">${st} (${durStr})</span>
                                 </div>
                             `;
                         }).join('');
 
                         const tooltipHtml = `
-                            <div class="flex items-center justify-between gap-4 border-b border-gray-700 pb-1.5 mb-2">
+                            <div class="flex items-center justify-between gap-4 border-b border-gray-700 pb-1.5 mb-2 whitespace-nowrap">
                                 <span class="font-bold text-xs font-mono">${colKey} (${cycleStr})</span>
                                 <span class="font-mono text-xs text-emerald-400 font-semibold">${succ}/${total} Succeeded</span>
                             </div>
-                            <div class="grid ${gridColsClass} gap-1.5">
+                            <div class="grid gap-1.5" style="grid-template-columns: repeat(${numCols}, max-content);">
                                 ${itemsHtml}
                             </div>
                         `;
