@@ -22,15 +22,11 @@ common:
           max_idle_sec: 1200
 
 experiments:
-  - name: rrfsdet_rt
-    expdir: /scratch5/purged/gge/arps/PEAR/exp/rrfsdet
-    subject_prefix: rrfsv2x_rt
+  - name: rrfsv2x_det
+    expdir: /scratch3/BMC/rtwrfruc/RRFSv2X/NCO_dirs/RRFSv2X/exp/rrfsdet
+    subject_prefix: rrfsv2x_det
+    lookback_cycles: 12
 
-  - name: rrfsdet_retro
-    expdir: /gpfs/f7/arfs-gsl/world-shared/gge/rrfs2/OPSROOT/conus12km/exp/rrfsdet
-    subject_prefix: retro_PEAR
-    checks:
-      stall:
-        threshold_sec: 10800
-      hung_jobs:
-        enabled: true
+  - name: rrfsv2x_ens
+    expdir: /scratch3/BMC/rtwrfruc/RRFSv2X/NCO_dirs/RRFSv2X/exp/rrfsenkf
+    subject_prefix: rrfsv2x_ens
