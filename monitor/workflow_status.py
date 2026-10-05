@@ -593,7 +593,17 @@ def git_push_status_branch(repo_root: Path, updated_files: List[Path], branch: s
     return False
 
 
-def ping_heartbeat(uuid_str: str, dry_run: bool) -> None:
+def find_heartbeat_uuid(repo_root: Path) -> Optional[str]:
+    """Read healthchecks.io UUID from untracked root file healthchecks_uuid.txt."""
+    p = repo_root / "healthchecks_uuid.txt"
+    if p.is_file():
+        val = p.read_text().strip()
+        if val:
+            return val
+    return None
+
+
+def ping_heartbeat(uuid_str: Optional[str], dry_run: bool) -> None:
     if not uuid_str or dry_run:
         return
     url = f"https://hc-ping.com/{uuid_str.strip()}"
@@ -609,7 +619,6 @@ def process_experiment(
     explicit_common: Optional[Path],
     dry_run: bool,
     updated_files: List[Path],
-    heartbeats_to_ping: Set[str],
 ) -> bool:
     cfg = load_merged_config(config_file, explicit_common)
     config_dir = config_file.parent
@@ -648,11 +657,6 @@ def process_experiment(
 
     # Store <exp>.json inside git-ignored configs/.state/ so working tree on `main` stays 100% clean
     status_file = state_dir / f"{exp_name}.json"
-
-    hb_cfg = cfg.get("heartbeat", {})
-    hc_uuid = (hb_cfg.get("healthchecks_uuid") or "").strip()
-    if hc_uuid:
-        heartbeats_to_ping.add(hc_uuid)
 
     state_file = state_dir / f"{exp_name}_{cluster}_state.json"
     state = load_state(state_file)
@@ -801,19 +805,17 @@ def main() -> int:
 
     ok_count = 0
     updated_files: List[Path] = []
-    heartbeats_to_ping: Set[str] = set()
 
     for cf in config_files:
         try:
-            if process_experiment(cf, explicit_common, args.dry_run, updated_files, heartbeats_to_ping):
+            if process_experiment(cf, explicit_common, args.dry_run, updated_files):
                 ok_count += 1
         except Exception as exc:
             logging.exception("Error processing %s: %s", cf.name, exc)
 
     if ok_count > 0:
         git_push_status_branch(REPO_ROOT, updated_files, status_branch, args.dry_run)
-        for uuid_str in sorted(heartbeats_to_ping):
-            ping_heartbeat(uuid_str, args.dry_run)
+        ping_heartbeat(find_heartbeat_uuid(REPO_ROOT), args.dry_run)
 
     logging.info("=== Monitor run completed (%d/%d experiments succeeded) ===", ok_count, len(config_files))
     return 0 if ok_count > 0 else 1

@@ -1,5 +1,6 @@
-# State files (generated on HPC, not committed)
+# State files and secrets (generated on HPC, not committed)
 configs/.state/
+healthchecks_uuid.txt
 
 # Python
 __pycache__/

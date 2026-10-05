@@ -26,6 +26,3 @@ checks:
       - name: fcst
         log_pattern: "{workdir}/fcst_{cyc}/log.atmosphere.0000.out"
         max_idle_sec: 1200
-
-heartbeat:
-  healthchecks_uuid: ""

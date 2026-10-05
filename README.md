@@ -44,7 +44,7 @@ cd workflow_status
 
 ### 2. Edit `configs/common.yaml` & Experiment Configs
 
-Edit [`configs/common.yaml`](configs/common.yaml) once for shared settings (`recipients`, `healthchecks_uuid`, etc.), then create a tiny config per experiment:
+Edit [`configs/common.yaml`](configs/common.yaml) once for shared settings (`recipients`, thresholds, etc.), then create a tiny config per experiment:
 
 ```yaml
 # configs/exp1.yaml
@@ -54,6 +54,13 @@ experiment:
 
 alerts:
   subject_prefix: rrfsv2x_rt
+```
+
+*(Optional)* For `healthchecks.io` dead-man's-switch monitoring, put your UUID in an untracked `healthchecks_uuid.txt` file at the repo root (git-ignored):
+
+```bash
+echo 'YOUR-UUID-HERE' > healthchecks_uuid.txt
+chmod 600 healthchecks_uuid.txt
 ```
 
 ### 3. Test (`--dry-run`)
