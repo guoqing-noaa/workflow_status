@@ -83,13 +83,17 @@ def run_rocoto_cmd(cmd: List[str], expdir: Path) -> str:
         text=True,
         timeout=120,
     )
+    combined = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+    for line in combined.splitlines():
+        if "Error:" in line or "error:" in line:
+            logging.warning("rocotostat error in %s: %s", expdir, line.strip())
     return proc.stdout
 
 
 def parse_rocotostat(expdir: Path, xml: str, db: str, lookback: int = 6) -> List[Dict[str, Any]]:
     """
     1. Run `rocotostat -w <xml> -d <db> -s` to get all activated cycles & timestamps.
-    2. Select all 'Active' cycles + the last `lookback` cycles (works for both realtime & retro).
+    2. Exclude 'Inactive' future cycles and select the last `lookback` cycles (works for realtime & retro).
     3. Run `rocotostat -w <xml> -d <db> -c <selected_cycles>` and parse tasks.
     """
     summary_out = run_rocoto_cmd(["rocotostat", "-w", xml, "-d", db, "-s"], expdir)
@@ -101,13 +105,15 @@ def parse_rocotostat(expdir: Path, xml: str, db: str, lookback: int = 6) -> List
         if not line or line.startswith("CYCLE") or "::" in line:
             continue
         parts = line.split()
-        if len(parts) < 6:
+        if len(parts) < 4:
             continue
         cdate = parts[0]
         if not CYCLE_RE.match(cdate) or int(cdate) >= 210000000000:
             continue
         cstate = parts[1]
-        activated = " ".join(parts[2:6])
+        if cstate.lower() == "inactive":
+            continue
+        activated = " ".join(parts[2:6]) if len(parts) >= 6 else None
         deactivated = None
         if len(parts) >= 10 and parts[6] != "-":
             deactivated = " ".join(parts[6:10])
@@ -124,9 +130,7 @@ def parse_rocotostat(expdir: Path, xml: str, db: str, lookback: int = 6) -> List
     if not cycle_order:
         return []
 
-    active_cycles = [c for c in cycle_order if summary_map[c]["cycle_state"] == "Active"]
-    recent_cycles = cycle_order[-lookback:] if lookback > 0 else cycle_order
-    selected_cycles = sorted(set(active_cycles + recent_cycles))
+    selected_cycles = cycle_order[-lookback:] if lookback > 0 else cycle_order
     if not selected_cycles:
         return []
 

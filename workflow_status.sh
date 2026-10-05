@@ -13,6 +13,7 @@ set -o pipefail
 unset SLURM_MEM_PER_NODE SLURM_MEM_PER_CPU SLURM_MEM_PER_GPU
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROCOTO_MOD="${ROCOTO_MOD:-rocoto/1.3.7g}"
 
 if [[ -z "${MACHINE:-}" ]]; then
   echo "ERROR: MACHINE environment variable is required." >&2
@@ -68,7 +69,7 @@ case "${MACHINE}" in
 esac
 
 if command -v module &>/dev/null; then
-  module load rocoto 2>/dev/null || true
+  module load "${ROCOTO_MOD}" 2>/dev/null || true
 fi
 
 if [[ -n "${BASEDIR}" && -x "${BASEDIR}/envs/pyDAmonitor/bin/python3" ]]; then
