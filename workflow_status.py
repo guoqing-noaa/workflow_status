@@ -18,6 +18,7 @@ Features:
 """
 
 import argparse
+import concurrent.futures
 import copy
 import datetime as dt
 import hashlib
@@ -189,6 +190,7 @@ def build_status_dict(experiment: str, cluster: str, cycles: List[Dict[str, Any]
         "queued": 0,
         "submitting": 0,
         "waiting": 0,
+        "expired": 0,
         "dead": 0,
         "other": 0,
     }
@@ -206,6 +208,8 @@ def build_status_dict(experiment: str, cluster: str, cycles: List[Dict[str, Any]
                 counts["submitting"] += 1
             elif st == "WAITING":
                 counts["waiting"] += 1
+            elif st == "EXPIRED":
+                counts["expired"] += 1
             elif st in ("DEAD", "FAILED"):
                 counts["dead"] += 1
             else:
@@ -459,27 +463,6 @@ def git_push_status_branch(repo_root: Path, updated_files: List[Path], branch: s
         return True
 
     existing_blobs: Dict[str, str] = {}
-    fetch_proc = subprocess.run(
-        ["git", "fetch", "origin", f"refs/heads/{branch}:refs/remotes/origin/{branch}"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if fetch_proc.returncode == 0:
-        ls_proc = subprocess.run(
-            ["git", "ls-tree", f"refs/remotes/origin/{branch}"],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if ls_proc.returncode == 0:
-            for line in ls_proc.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 4 and parts[3].endswith(".json"):
-                    existing_blobs[parts[3]] = parts[2]
-
     for f in updated_files:
         ho = subprocess.run(
             ["git", "hash-object", "-w", str(f)],
@@ -563,8 +546,7 @@ def process_experiment(
     exp_cfg: Dict[str, Any],
     state_dir: Path,
     dry_run: bool,
-    updated_files: List[Path],
-) -> bool:
+) -> Optional[Path]:
     exp_name = exp_cfg.get("name")
     cluster = exp_cfg.get("cluster") or os.environ.get("MACHINE") or "unknown"
     expdir_str = exp_cfg.get("expdir")
@@ -573,14 +555,14 @@ def process_experiment(
 
     if not exp_name or not expdir_str:
         logging.error("Missing required experiment fields (name, expdir): %s", exp_cfg)
-        return False
+        return None
 
     expdir = Path(expdir_str)
     logging.info("Processing experiment: %s on %s (%s)", exp_name, cluster, expdir)
 
     if not expdir.is_dir():
         logging.warning("Experiment directory not accessible on %s: %s — skipping", socket.gethostname(), expdir)
-        return False
+        return None
 
     lookback = int(exp_cfg.get("lookback_cycles", 72))
     recipients = parse_recipients(exp_cfg.get("recipients", []))
@@ -662,7 +644,6 @@ def process_experiment(
 
     # 6. Write .state/<exp>.json
     write_status_json(status, status_file)
-    updated_files.append(status_file)
     logging.info("Saved status JSON: %s", status_file)
 
     s = status["summary"]
@@ -678,7 +659,7 @@ def process_experiment(
         s["waiting"],
         s["dead"],
     )
-    return True
+    return status_file
 
 
 def main() -> int:
@@ -737,20 +718,32 @@ def main() -> int:
         logging.error("No experiments defined under 'experiments:' in %s", config_file)
         return 1
 
-    ok_count = 0
+    merged_list = [deep_merge(common_cfg, exp_item) for exp_item in experiments]
     updated_files: List[Path] = []
 
-    for exp_item in experiments:
-        merged_exp = deep_merge(common_cfg, exp_item)
-        try:
-            if process_experiment(merged_exp, state_dir, args.dry_run, updated_files):
-                ok_count += 1
-        except Exception as exc:
-            logging.exception("Error processing %s: %s", exp_item.get("name", "unknown"), exc)
+    # Process all experiments concurrently in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(merged_list)) as pool:
+        future_map = {
+            pool.submit(process_experiment, m_exp, state_dir, args.dry_run): m_exp.get("name", "unknown")
+            for m_exp in merged_list
+        }
+        for fut in concurrent.futures.as_completed(future_map):
+            name = future_map[fut]
+            try:
+                res = fut.result()
+                if res is not None:
+                    updated_files.append(res)
+            except Exception as exc:
+                logging.exception("Error processing %s: %s", name, exc)
 
+    ok_count = len(updated_files)
     if ok_count > 0:
-        git_push_status_branch(REPO_ROOT, updated_files, status_branch, args.dry_run)
-        ping_heartbeat(find_heartbeat_uuid(REPO_ROOT), args.dry_run)
+        # Run git push and healthchecks heartbeat concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as net_pool:
+            f_push = net_pool.submit(git_push_status_branch, REPO_ROOT, sorted(updated_files), status_branch, args.dry_run)
+            f_ping = net_pool.submit(ping_heartbeat, find_heartbeat_uuid(REPO_ROOT), args.dry_run)
+            f_push.result()
+            f_ping.result()
 
     logging.info("=== Monitor run completed (%d/%d experiments succeeded) ===", ok_count, len(experiments))
     return 0 if ok_count > 0 else 1

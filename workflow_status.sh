@@ -23,7 +23,7 @@ fi
 export MACHINE
 
 # ── Load Rocoto Module & Set Miniforge3 BASEDIR ─────────────────────────
-[[ -f /etc/profile ]] && source /etc/profile 2>/dev/null || true
+command -v module &>/dev/null || { [[ -f /etc/profile ]] && source /etc/profile 2>/dev/null || true; }
 
 BASEDIR=""
 case "${MACHINE}" in

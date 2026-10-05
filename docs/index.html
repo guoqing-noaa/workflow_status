@@ -316,6 +316,7 @@
             'RUNNING': 'bg-state-running',
             'QUEUED': 'bg-state-queued',
             'WAITING': 'bg-state-waiting',
+            'EXPIRED': 'bg-state-other',
             'DEAD': 'bg-state-dead',
             'SUBMITTING': 'bg-state-submitting',
             'OTHER': 'bg-state-other'
@@ -326,6 +327,7 @@
             'RUNNING': 'bg-blue-400',
             'QUEUED': 'bg-indigo-400',
             'WAITING': 'bg-slate-400',
+            'EXPIRED': 'bg-orange-400',
             'DEAD': 'bg-red-500',
             'SUBMITTING': 'bg-yellow-400',
             'OTHER': 'bg-orange-400'
@@ -666,10 +668,19 @@
             clone.querySelector('.exp-name').textContent = data.experiment || selectedExpKey;
             clone.querySelector('.exp-cluster').textContent = data.cluster || 'Unknown';
             clone.querySelector('.exp-host').textContent = data.monitor_host || 'Unknown';
-            clone.querySelector('.exp-updated-iso').textContent = data.updated_at || '--';
 
-            // Staleness indicator
+            // Staleness indicator & UTC + Local time
             const updatedTime = new Date(data.updated_at);
+            if (!isNaN(updatedTime)) {
+                const localStr = updatedTime.toLocaleString(undefined, {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false, timeZoneName: 'short'
+                });
+                clone.querySelector('.exp-updated-iso').textContent = `${data.updated_at} (${localStr})`;
+            } else {
+                clone.querySelector('.exp-updated-iso').textContent = data.updated_at || '--';
+            }
             const diffMin = Math.floor((new Date() - updatedTime) / 60000);
             const dot = clone.querySelector('.staleness-dot');
             const text = clone.querySelector('.staleness-text');
@@ -719,8 +730,17 @@
             }
 
             // Task Summary with cycle range: "392 Total Tasks during YYYYMMDDHH - YYYYMMDDHH"
-            const sum = data.summary || { total_tasks: 0, succeeded: 0, running: 0, queued: 0, submitting: 0, waiting: 0, dead: 0, other: 0 };
             const rawCycles = data.cycles || [];
+            const sum = { ...(data.summary || { total_tasks: 0, succeeded: 0, running: 0, queued: 0, submitting: 0, waiting: 0, expired: 0, dead: 0, other: 0 }) };
+            if (sum.expired === undefined) {
+                let expCnt = 0;
+                rawCycles.forEach(c => (c.tasks || []).forEach(t => {
+                    if ((t.state || '').toUpperCase() === 'EXPIRED') expCnt++;
+                }));
+                sum.expired = expCnt;
+                sum.other = Math.max(0, (sum.other || 0) - expCnt);
+            }
+
             let rangeText = `${sum.total_tasks || 0} Total Tasks`;
             if (rawCycles.length > 0) {
                 const cList = rawCycles.map(c => (c.cdate && c.cdate.length === 12) ? c.cdate.slice(0, 10) : c.cdate).sort();
@@ -734,8 +754,8 @@
 
             const bar = clone.querySelector('.exp-bar');
             const legend = clone.querySelector('.exp-legend');
-            const states = ['succeeded', 'running', 'queued', 'submitting', 'waiting', 'dead', 'other'];
-            const labels = ['Succeeded', 'Running', 'Queued', 'Submitting', 'Waiting', 'Dead', 'Other'];
+            const states = ['succeeded', 'running', 'queued', 'submitting', 'waiting', 'expired', 'dead', 'other'];
+            const labels = ['Succeeded', 'Running', 'Queued', 'Submitting', 'Waiting', 'Expired', 'Dead', 'Other'];
 
             states.forEach((state, i) => {
                 const count = sum[state] || 0;
