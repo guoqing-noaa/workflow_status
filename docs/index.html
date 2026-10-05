@@ -167,39 +167,6 @@
                 <!-- Active experiment view injected here -->
             </div>
 
-            <!-- Historical Trends Section -->
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5 w-full">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                    <h2 class="text-lg font-bold flex items-center gap-2">
-                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
-                        </svg>
-                        Historical Trends (Last 7 Days)
-                    </h2>
-                    <span id="trends-subtitle" class="text-xs font-mono text-gray-500 dark:text-gray-400"></span>
-                </div>
-
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full">
-                    <!-- Chart 1: Cycle Wall Time -->
-                    <div class="flex flex-col">
-                        <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 text-center">Cycle Wall Time (Minutes)</h3>
-                        <div class="relative h-60 w-full bg-gray-50 dark:bg-gray-900 rounded border border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <canvas id="wallTimeChart" class="absolute inset-0 w-full h-full"></canvas>
-                        </div>
-                        <div id="wallTimeLegend" class="mt-2 flex flex-wrap justify-center gap-3 text-xs"></div>
-                    </div>
-
-                    <!-- Chart 2: Dead Jobs -->
-                    <div class="flex flex-col">
-                        <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 text-center">Dead Job Count</h3>
-                        <div class="relative h-60 w-full bg-gray-50 dark:bg-gray-900 rounded border border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <canvas id="deadJobsChart" class="absolute inset-0 w-full h-full"></canvas>
-                        </div>
-                        <div id="deadJobsLegend" class="mt-2 flex flex-wrap justify-center gap-3 text-xs"></div>
-                    </div>
-                </div>
-            </div>
-
         </main>
     </div>
 
@@ -267,10 +234,10 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                         </svg>
                     </button>
-                    <div class="grid-content overflow-x-auto scrollbar-custom bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 w-full">
+                    <div class="grid-content overflow-auto max-h-[calc(100vh-16rem)] scrollbar-custom bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 w-full">
                         <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 exp-grid-header">
+                            <thead class="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">
+                                <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 exp-grid-header">
                                     <!-- Task headers injected here -->
                                 </tr>
                             </thead>
@@ -296,9 +263,8 @@
             return 'guoqing-noaa/workflow_status';
         })();
 
-        // Optional fallback default landing experiment ('<machine>/<exp>' or '<exp>').
-        // You can also set `default: true` on an experiment in `config.yml`.
-        const DEFAULT_EXP = '';
+        // Default landing experiment ('<machine>/<exp>' or '<exp>'). Falls back to first entry if not found.
+        const DEFAULT_EXP = 'ursa/rrfsv2x_det';
         const REFRESH_INTERVAL = 120; // seconds
 
         // --- State ---
@@ -306,7 +272,6 @@
         let timerInterval = null;
         let isDemoMode = false;
         let currentStatusData = {};
-        let currentHistoryData = {};
         let selectedExpKey = null;
 
         // --- Sample Fallback Data ---
@@ -314,7 +279,6 @@
             "ursa/rrfsv2x_det": {
                 "experiment": "rrfsv2x_det",
                 "cluster": "ursa",
-                "default": true,
                 "updated_at": new Date(Date.now() - 3 * 60000).toISOString(),
                 "monitor_host": "ufe04",
                 "cycles": [
@@ -346,16 +310,6 @@
             }
         };
 
-        const SAMPLE_HISTORY = {
-            "ursa/rrfsv2x_det": {
-                "entries": [
-                    { "timestamp": new Date(Date.now() - 6 * 3600000).toISOString(), "cycle": "202610041500", "dead": 0, "cycle_wall_time_min": 112.4 },
-                    { "timestamp": new Date(Date.now() - 3 * 3600000).toISOString(), "cycle": "202610041800", "dead": 0, "cycle_wall_time_min": 108.1 },
-                    { "timestamp": new Date(Date.now() - 3 * 60000).toISOString(), "cycle": "202610042100", "dead": 0, "cycle_wall_time_min": 105.0 }
-                ]
-            }
-        };
-
         // --- Color Mapping ---
         const STATE_COLORS = {
             'SUCCEEDED': 'bg-state-succeeded',
@@ -376,15 +330,6 @@
             'SUBMITTING': 'bg-yellow-400',
             'OTHER': 'bg-orange-400'
         };
-
-        const CHART_COLORS = [
-            '#3b82f6', // blue-500
-            '#10b981', // emerald-500
-            '#f59e0b', // amber-500
-            '#ef4444', // red-500
-            '#8b5cf6', // violet-500
-            '#ec4899'  // pink-500
-        ];
 
         // Regex for grouping tasks ending in e.g. _g00, _g01, _m001, _m002, _f01, _f02, _ens01, _p01
         const GROUP_TASK_RE = /^(.+)_([gmf]\d+|ens\d+|p\d+)$/i;
@@ -553,7 +498,6 @@
                 errorBanner.classList.add('hidden');
 
                 const statusData = {};
-                const historyData = {};
 
                 // 3. Fetch each <exp>.json (using commit SHA ref from status-<machine> to bypass 5-min CDN cache)
                 await Promise.all(targets.map(async (t) => {
@@ -563,11 +507,7 @@
                         const statusResp = await fetch(statusUrl, { cache: "no-store" });
 
                         if (statusResp.ok) {
-                            const doc = await statusResp.json();
-                            statusData[key] = doc;
-                            if (Array.isArray(doc.history) && doc.history.length > 0) {
-                                historyData[key] = { entries: doc.history };
-                            }
+                            statusData[key] = await statusResp.json();
                         }
                     } catch (e) {
                         console.error(`Failed to fetch data for ${key}`, e);
@@ -578,14 +518,12 @@
                 const sortedStatus = {};
                 Object.keys(statusData).sort().forEach(k => { sortedStatus[k] = statusData[k]; });
                 currentStatusData = sortedStatus;
-                currentHistoryData = historyData;
 
             } catch (error) {
                 console.warn('Using fallback sample data due to error:', error);
                 isDemoMode = true;
                 errorBanner.classList.remove('hidden');
                 currentStatusData = SAMPLE_STATUS;
-                currentHistoryData = SAMPLE_HISTORY;
             } finally {
                 const icon = document.getElementById('refresh-btn').querySelector('svg');
                 if (icon) icon.classList.remove('animate-spin');
@@ -608,13 +546,7 @@
             if (selectedExpKey && currentStatusData[selectedExpKey]) {
                 return;
             }
-            // 1. Check if any experiment JSON has `default: true` (from config.yml)
-            const cfgDefaultKey = keys.find(k => currentStatusData[k] && currentStatusData[k].default === true);
-            if (cfgDefaultKey) {
-                selectedExpKey = cfgDefaultKey;
-                return;
-            }
-            // 2. Check DEFAULT_EXP constant in index.html
+            // 1. Check DEFAULT_EXP constant in index.html
             if (DEFAULT_EXP) {
                 const matchKey = keys.find(k => k === DEFAULT_EXP || k.endsWith(`/${DEFAULT_EXP}`));
                 if (matchKey) {
@@ -622,7 +554,7 @@
                     return;
                 }
             }
-            // 3. Fallback to the first entry
+            // 2. Fallback to the first entry
             selectedExpKey = keys[0];
         }
 
@@ -985,184 +917,7 @@
             });
 
             container.appendChild(clone);
-
-            // Render charts for the selected experiment
-            document.getElementById('trends-subtitle').textContent = selectedExpKey;
-            const singleHistory = currentHistoryData[selectedExpKey]
-                ? { [selectedExpKey]: currentHistoryData[selectedExpKey] }
-                : {};
-            renderCharts(singleHistory);
         }
-
-        // --- Charts Rendering ---
-        function renderCharts(historyData) {
-            const isDark = document.documentElement.classList.contains('dark');
-            const textColor = isDark ? '#d1d5db' : '#374151';
-            const gridColor = isDark ? '#374151' : '#e5e7eb';
-
-            if (!historyData || Object.keys(historyData).length === 0) {
-                drawChart('wallTimeChart', 'wallTimeLegend', [], [], textColor, gridColor, false);
-                drawChart('deadJobsChart', 'deadJobsLegend', [], [], textColor, gridColor, true);
-                return;
-            }
-
-            let allTs = new Set();
-            for (const exp of Object.values(historyData)) {
-                if (exp.entries) exp.entries.forEach(e => allTs.add(e.timestamp));
-            }
-            let timestamps = Array.from(allTs).sort((a, b) => new Date(a) - new Date(b));
-            if (timestamps.length === 0) return;
-
-            const experiments = Object.keys(historyData);
-            const wallTimeDatasets = [];
-            const deadJobsDatasets = [];
-
-            experiments.forEach((expName, i) => {
-                const color = CHART_COLORS[i % CHART_COLORS.length];
-                const entries = historyData[expName].entries || [];
-
-                const wtData = timestamps.map(ts => {
-                    const entry = entries.find(e => e.timestamp === ts);
-                    return entry && entry.cycle_wall_time_min != null ? entry.cycle_wall_time_min : null;
-                });
-
-                const djData = timestamps.map(ts => {
-                    const entry = entries.find(e => e.timestamp === ts);
-                    return entry && entry.dead != null ? entry.dead : null;
-                });
-
-                wallTimeDatasets.push({ label: expName, color, data: wtData });
-                deadJobsDatasets.push({ label: expName, color, data: djData });
-            });
-
-            const labels = timestamps.map(ts => {
-                const d = new Date(ts);
-                return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-            });
-
-            drawChart('wallTimeChart', 'wallTimeLegend', labels, wallTimeDatasets, textColor, gridColor, false);
-            drawChart('deadJobsChart', 'deadJobsLegend', labels, deadJobsDatasets, textColor, gridColor, true);
-        }
-
-        function drawChart(canvasId, legendId, labels, datasets, textColor, gridColor, isIntY) {
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.parentElement.getBoundingClientRect();
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
-
-            const w = rect.width;
-            const h = rect.height;
-            ctx.clearRect(0, 0, w, h);
-
-            if (!labels || labels.length === 0) {
-                ctx.font = '12px sans-serif';
-                ctx.fillStyle = textColor;
-                ctx.textAlign = 'center';
-                ctx.fillText('No historical entries yet', w / 2, h / 2);
-                return;
-            }
-
-            const padding = { top: 20, right: 20, bottom: 30, left: 44 };
-            const chartW = w - padding.left - padding.right;
-            const chartH = h - padding.top - padding.bottom;
-
-            let maxY = 0;
-            datasets.forEach(ds => {
-                ds.data.forEach(val => {
-                    if (val !== null && val > maxY) maxY = val;
-                });
-            });
-            if (maxY === 0) maxY = 10;
-            maxY = Math.ceil(maxY * 1.1);
-            if (isIntY) maxY = Math.ceil(maxY);
-
-            ctx.font = '10px sans-serif';
-            ctx.fillStyle = textColor;
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-
-            const yTicks = 5;
-            for (let i = 0; i <= yTicks; i++) {
-                const yVal = (maxY / yTicks) * i;
-                const yPos = padding.top + chartH - (i / yTicks) * chartH;
-
-                ctx.beginPath();
-                ctx.moveTo(padding.left, yPos);
-                ctx.lineTo(w - padding.right, yPos);
-                ctx.strokeStyle = gridColor;
-                ctx.lineWidth = 1;
-                ctx.stroke();
-
-                ctx.fillText(isIntY ? Math.round(yVal) : yVal.toFixed(1), padding.left - 6, yPos);
-            }
-
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            const stepX = labels.length > 1 ? chartW / (labels.length - 1) : 0;
-            const skip = Math.max(1, Math.ceil(labels.length / 8));
-
-            labels.forEach((lbl, i) => {
-                const xPos = labels.length === 1 ? padding.left + chartW / 2 : padding.left + i * stepX;
-                if (i % skip === 0 || i === labels.length - 1) {
-                    ctx.fillText(lbl, xPos, h - padding.bottom + 6);
-                }
-            });
-
-            datasets.forEach(ds => {
-                ctx.beginPath();
-                let hasMoved = false;
-
-                ds.data.forEach((val, i) => {
-                    if (val === null) return;
-                    const xPos = labels.length === 1 ? padding.left + chartW / 2 : padding.left + i * stepX;
-                    const yPos = padding.top + chartH - ((val / maxY) * chartH);
-                    if (!hasMoved) {
-                        ctx.moveTo(xPos, yPos);
-                        hasMoved = true;
-                    } else {
-                        ctx.lineTo(xPos, yPos);
-                    }
-                });
-
-                ctx.strokeStyle = ds.color;
-                ctx.lineWidth = 2;
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-
-                ds.data.forEach((val, i) => {
-                    if (val === null) return;
-                    const xPos = labels.length === 1 ? padding.left + chartW / 2 : padding.left + i * stepX;
-                    const yPos = padding.top + chartH - ((val / maxY) * chartH);
-
-                    ctx.beginPath();
-                    ctx.arc(xPos, yPos, 3.5, 0, Math.PI * 2);
-                    ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff';
-                    ctx.fill();
-                    ctx.strokeStyle = ds.color;
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                });
-            });
-
-            const legend = document.getElementById(legendId);
-            if (legend) {
-                legend.innerHTML = datasets.map(ds => `
-                    <div class="flex items-center gap-1.5">
-                        <div class="w-3 h-3 rounded-full" style="background-color: ${ds.color}"></div>
-                        <span class="text-gray-600 dark:text-gray-400 font-mono">${ds.label}</span>
-                    </div>
-                `).join('');
-            }
-        }
-
-        window.addEventListener('resize', () => {
-            renderSelectedExperiment();
-        });
     </script>
 </body>
 </html>

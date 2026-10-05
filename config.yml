@@ -4,7 +4,7 @@
 common:
   workflow_xml: rrfs.xml
   workflow_db: rrfs.db
-  lookback_cycles: 4
+  lookback_cycles: 72
   recipients:
     - Guoqing.Ge@noaa.gov
   checks:
@@ -25,8 +25,6 @@ experiments:
   - name: rrfsv2x_det
     expdir: /scratch3/BMC/rtwrfruc/RRFSv2X/NCO_dirs/RRFSv2X/exp/rrfsdet
     subject_prefix: rrfsv2x_det
-    lookback_cycles: 12
-    default: true  # Optional: set to true to make this experiment the default landing page
 
   - name: rrfsv2x_ens
     expdir: /scratch3/BMC/rtwrfruc/RRFSv2X/NCO_dirs/RRFSv2X/exp/rrfsenkf

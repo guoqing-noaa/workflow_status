@@ -430,46 +430,8 @@ def check_hung_jobs(
     return hung_found
 
 
-def write_status_with_history(status: Dict[str, Any], status_file: Path) -> None:
-    """
-    Read existing `.state/<exp>.json` from disk (if present) to preserve
-    its rolling 7-day `history` array, append the new snapshot, and write to disk.
-    """
-    existing_history: List[Dict[str, Any]] = []
-    if status_file.is_file():
-        try:
-            old_doc = json.loads(status_file.read_text())
-            existing_history = old_doc.get("history", [])
-        except Exception:
-            existing_history = []
-
-    done_cycles = [
-        c for c in status.get("cycles", [])
-        if c.get("cycle_state") == "Done" and c.get("wall_time_min") is not None
-    ]
-    latest_wall_min = done_cycles[-1]["wall_time_min"] if done_cycles else None
-    latest_cycle = status["cycles"][-1]["cdate"] if status.get("cycles") else "unknown"
-
-    new_entry = {
-        "timestamp": status["updated_at"],
-        "cycle": latest_cycle,
-        "tasks_total": status["summary"]["total_tasks"],
-        "succeeded": status["summary"]["succeeded"],
-        "running": status["summary"]["running"],
-        "dead": status["summary"]["dead"],
-        "cycle_wall_time_min": latest_wall_min,
-    }
-
-    cutoff_dt = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)
-    cutoff_iso = cutoff_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    trimmed = [
-        e for e in existing_history
-        if isinstance(e, dict) and e.get("timestamp", "") >= cutoff_iso
-    ]
-    trimmed.append(new_entry)
-    status["history"] = trimmed[-1008:]
-
+def write_status_json(status: Dict[str, Any], status_file: Path) -> None:
+    """Atomically write `.state/<exp>.json` to disk."""
     status_file.parent.mkdir(parents=True, exist_ok=True)
     tmp = status_file.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(status, indent=2) + "\n")
@@ -620,7 +582,7 @@ def process_experiment(
         logging.warning("Experiment directory not accessible on %s: %s — skipping", socket.gethostname(), expdir)
         return False
 
-    lookback = int(exp_cfg.get("lookback_cycles", 4))
+    lookback = int(exp_cfg.get("lookback_cycles", 72))
     recipients = parse_recipients(exp_cfg.get("recipients", []))
     subject_prefix = exp_cfg.get("subject_prefix", exp_name)
 
@@ -636,8 +598,6 @@ def process_experiment(
     # 1. Parse rocotostat
     cycles = parse_rocotostat(expdir, xml, db, lookback)
     status = build_status_dict(exp_name, cluster, cycles)
-    if exp_cfg.get("default"):
-        status["default"] = True
 
     # 2. Dead job check
     if dead_cfg.get("enabled", True):
@@ -700,8 +660,8 @@ def process_experiment(
     state["last_check"] = status["updated_at"]
     save_state(state_file, state)
 
-    # 6. Update .state/<exp>.json with rolling 7-day history
-    write_status_with_history(status, status_file)
+    # 6. Write .state/<exp>.json
+    write_status_json(status, status_file)
     updated_files.append(status_file)
     logging.info("Saved status JSON: %s", status_file)
 
