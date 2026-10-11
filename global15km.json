@@ -1,0 +1,545 @@
+{
+  "experiment": "global15km",
+  "cluster": "gaeac6",
+  "updated_at": "2026-10-11T01:35:34Z",
+  "monitor_host": "gaea68",
+  "cycles": [
+    {
+      "cdate": "202405060000",
+      "cycle_state": "Active",
+      "activated": "Jul 04 2026 01:35:29",
+      "deactivated": null,
+      "wall_time_min": null,
+      "tasks": [
+        {
+          "name": "ioda_bufr",
+          "state": "SUCCEEDED",
+          "jobid": "221867330",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 29.0
+        },
+        {
+          "name": "ungrib_ic",
+          "state": "SUCCEEDED",
+          "jobid": "219318937",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 13.0
+        },
+        {
+          "name": "ic",
+          "state": "SUCCEEDED",
+          "jobid": "219318951",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 63.0
+        },
+        {
+          "name": "prep_ic",
+          "state": "SUCCEEDED",
+          "jobid": "219318959",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 7.0
+        },
+        {
+          "name": "jedivar",
+          "state": "DEAD",
+          "jobid": "221867347",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 18.0
+        },
+        {
+          "name": "fcst_l",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "save_for_next_f01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g00",
+          "state": "SUCCEEDED",
+          "jobid": "219319327",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 982.0
+        },
+        {
+          "name": "upp_g00",
+          "state": "DEAD",
+          "jobid": "219319437",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "clean",
+          "state": "SUCCEEDED",
+          "jobid": "219318963",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 5.0
+        },
+        {
+          "name": "mpassit_g01",
+          "state": "SUCCEEDED",
+          "jobid": "219319591",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 786.0
+        },
+        {
+          "name": "mpassit_g02",
+          "state": "SUCCEEDED",
+          "jobid": "219319874",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 787.0
+        },
+        {
+          "name": "mpassit_g03",
+          "state": "SUCCEEDED",
+          "jobid": "219320188",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 792.0
+        },
+        {
+          "name": "mpassit_g04",
+          "state": "SUCCEEDED",
+          "jobid": "219320490",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 784.0
+        },
+        {
+          "name": "upp_g01",
+          "state": "DEAD",
+          "jobid": "219319714",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "upp_g02",
+          "state": "DEAD",
+          "jobid": "219320034",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 5.0
+        },
+        {
+          "name": "upp_g03",
+          "state": "DEAD",
+          "jobid": "219320349",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "upp_g04",
+          "state": "DEAD",
+          "jobid": "219320638",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 5.0
+        }
+      ]
+    },
+    {
+      "cdate": "202405061200",
+      "cycle_state": "Active",
+      "activated": "Jul 04 2026 01:35:29",
+      "deactivated": null,
+      "wall_time_min": null,
+      "tasks": [
+        {
+          "name": "ioda_bufr",
+          "state": "SUCCEEDED",
+          "jobid": "221867331",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 28.0
+        },
+        {
+          "name": "ungrib_ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867332",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 11.0
+        },
+        {
+          "name": "ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867343",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 61.0
+        },
+        {
+          "name": "prep_ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867472",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 7.0
+        },
+        {
+          "name": "jedivar",
+          "state": "DEAD",
+          "jobid": "221867476",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 31.0
+        },
+        {
+          "name": "fcst_l",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "save_for_next_f01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g00",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g00",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "clean",
+          "state": "SUCCEEDED",
+          "jobid": "221867477",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "mpassit_g01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g02",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g03",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g04",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g02",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g03",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g04",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        }
+      ]
+    },
+    {
+      "cdate": "202405070000",
+      "cycle_state": "Active",
+      "activated": "Jul 04 2026 01:35:29",
+      "deactivated": null,
+      "wall_time_min": null,
+      "tasks": [
+        {
+          "name": "ioda_bufr",
+          "state": "SUCCEEDED",
+          "jobid": "221867333",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 29.0
+        },
+        {
+          "name": "ungrib_ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867334",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 10.0
+        },
+        {
+          "name": "ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867344",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 62.0
+        },
+        {
+          "name": "prep_ic",
+          "state": "SUCCEEDED",
+          "jobid": "221867473",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "jedivar",
+          "state": "DEAD",
+          "jobid": "221867478",
+          "exit_status": 15,
+          "tries": 1,
+          "duration": 19.0
+        },
+        {
+          "name": "fcst_l",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "save_for_next_f01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g00",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g00",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "clean",
+          "state": "SUCCEEDED",
+          "jobid": "221867479",
+          "exit_status": 0,
+          "tries": 1,
+          "duration": 6.0
+        },
+        {
+          "name": "mpassit_g01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g02",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g03",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "mpassit_g04",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g01",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g02",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g03",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        },
+        {
+          "name": "upp_g04",
+          "state": "WAITING",
+          "jobid": null,
+          "exit_status": null,
+          "tries": null,
+          "duration": null
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_cycles": 3,
+    "active_cycles": 3,
+    "done_cycles": 0,
+    "total_tasks": 54,
+    "succeeded": 20,
+    "running": 0,
+    "queued": 0,
+    "submitting": 0,
+    "waiting": 26,
+    "expired": 0,
+    "dead": 8,
+    "other": 0
+  },
+  "alerts": {
+    "dead_jobs": [
+      {
+        "cycle": "202405060000",
+        "task": "jedivar",
+        "tries": 1,
+        "jobid": "221867347",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405060000",
+        "task": "upp_g00",
+        "tries": 1,
+        "jobid": "219319437",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405060000",
+        "task": "upp_g01",
+        "tries": 1,
+        "jobid": "219319714",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405060000",
+        "task": "upp_g02",
+        "tries": 1,
+        "jobid": "219320034",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405060000",
+        "task": "upp_g03",
+        "tries": 1,
+        "jobid": "219320349",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405060000",
+        "task": "upp_g04",
+        "tries": 1,
+        "jobid": "219320638",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405061200",
+        "task": "jedivar",
+        "tries": 1,
+        "jobid": "221867476",
+        "exit_status": 15
+      },
+      {
+        "cycle": "202405070000",
+        "task": "jedivar",
+        "tries": 1,
+        "jobid": "221867478",
+        "exit_status": 15
+      }
+    ],
+    "stall": true,
+    "stall_since": 1791179568,
+    "hung_jobs": []
+  },
+  "default_exp": "gaeac6/conus12km"
+}
